@@ -10,6 +10,7 @@ import org.springframework.batch.core.repository.JobExecutionAlreadyRunningExcep
 import org.springframework.batch.core.repository.JobInstanceAlreadyCompleteException;
 import org.springframework.batch.core.repository.JobRestartException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,11 +33,8 @@ public class StudentController {
                                             .toJobParameters();
 
         try {
-            JobExecution jobExecution = jobLauncher.run(job, jobParameters);
-
-            if(!jobExecution.getStatus().isUnsuccessful()){
-                System.out.println("Data exported successfully !!!");
-            }
+            // JobExecution jobExecution = jobLauncher.run(job, jobParameters);
+            jobLauncher.run(job, jobParameters);
         } catch (JobExecutionAlreadyRunningException | JobRestartException | JobInstanceAlreadyCompleteException
                 | JobParametersInvalidException e) {
             e.printStackTrace();

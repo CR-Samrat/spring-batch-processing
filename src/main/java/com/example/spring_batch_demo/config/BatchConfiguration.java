@@ -1,11 +1,11 @@
 package com.example.spring_batch_demo.config;
 
 import org.springframework.batch.core.Step;
-import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.partition.PartitionHandler;
+import org.springframework.batch.core.partition.support.TaskExecutorPartitionHandler;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.item.data.RepositoryItemWriter;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.LineMapper;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
@@ -17,11 +17,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.batch.core.Job;
 
 import com.example.spring_batch_demo.model.Student;
-import com.example.spring_batch_demo.repository.StudentRepository;
+import com.example.spring_batch_demo.partition.ColumnRangePartitioner;
 
 @Configuration
 public class BatchConfiguration {
@@ -31,9 +32,6 @@ public class BatchConfiguration {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
-
-    @Autowired
-    private StudentRepository studentRepository;
 
     // Observe the Spring-Batch-Architecture.jpg
     // Process from right to left
@@ -76,21 +74,35 @@ public class BatchConfiguration {
         return new CustomProcessor();
     }
 
-    // ItemWriter specifies how to write in the target file (Ex - write using repository)
+    // ItemWriter specifies how to write in the target file
     @Bean
-    protected RepositoryItemWriter<Student> writer(){
-        RepositoryItemWriter<Student> itemWriter = new RepositoryItemWriter<>();
+    protected CustomWriter writer(){
+        return new CustomWriter();
+    }
 
-        itemWriter.setRepository(studentRepository);
-        itemWriter.setMethodName("save");
+    // partitioner is used to partition the whole task into smaller tasks by dividing total number of rows into smaller chunks
+    // Each chunk then given to different threads to minimize total time
+    @Bean
+    protected ColumnRangePartitioner partitioner(){
+        return new ColumnRangePartitioner();
+    }
 
-        return itemWriter;
+    @Bean
+    protected PartitionHandler partitionHandler(){
+        TaskExecutorPartitionHandler taskExecutorPartitionHandler = new TaskExecutorPartitionHandler();
+        taskExecutorPartitionHandler.setGridSize(2); // no. of Threads
+        taskExecutorPartitionHandler.setTaskExecutor(taskExecutor());
+        taskExecutorPartitionHandler.setStep(slaveStep());
+
+        return taskExecutorPartitionHandler;
     }
 
     // Step is the combination of ItemReader, ItemProcessor & ItemWriter. Spring can have multiple Steps
+    // Each slave that will execute one chunk of (250 or 500) rows
     @Bean
-    protected Step step1(){
-        return new StepBuilder("step1", jobRepository)
+    protected Step slaveStep(){
+        return new StepBuilder("slaveStep", jobRepository)
+                    // .<Student, Student>chunk(500, transactionManager)
                     .<Student, Student>chunk(10, transactionManager)
                     .reader(reader())
                     .processor(processor())
@@ -99,15 +111,38 @@ public class BatchConfiguration {
                     .build();
     }
 
+    // Master step will manage each slave step
+    @Bean
+    protected Step masterStep(){
+        return new StepBuilder("masterStep", jobRepository)
+                    .partitioner(slaveStep().getName(), partitioner())
+                    .partitionHandler(partitionHandler())
+                    .build();
+    }
+
     // Job is the final step where is task is actually takes place by feeding each Step into Job
     @Bean
     protected Job runJob(){
         return new JobBuilder("myJob", jobRepository)
-                    .start(step1())
+                    // .flow(masterStep())
+                    .flow(slaveStep())
+                    .end()
                     .build();
     }
 
-    // Load data in async mode to speed up the process but removes the ordering (Optional)
+    // Execute the whole task using Threads
+    // @Bean
+    // protected TaskExecutor taskExecutor(){
+    //     ThreadPoolTaskExecutor taskHandler = new ThreadPoolTaskExecutor(); //to execute tasks in Thread manner
+    //     taskHandler.setCorePoolSize(4);  // Maximum number of Thread that keep alive at a time
+    //     taskHandler.setMaxPoolSize(4);   // Maximum number of Thread that can be generated
+    //     taskHandler.setQueueCapacity(4); // If Maximum number of Thread reached then extra will moved to Queue
+    //     taskHandler.afterPropertiesSet();
+
+    //     return taskHandler;
+    // }
+
+    // Execute the whole task in async manner (Optional)
     @Bean
     protected TaskExecutor taskExecutor(){
         SimpleAsyncTaskExecutor asyncExecutor = new SimpleAsyncTaskExecutor();
