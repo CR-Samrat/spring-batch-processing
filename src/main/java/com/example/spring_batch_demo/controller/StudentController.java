@@ -27,17 +27,22 @@ public class StudentController {
     private Job job;
     
     @PostMapping("/exportData")
-    public void exportCsvToDatabase(){
+    public ResponseEntity<?> exportCsvToDatabase(){
         JobParameters jobParameters = new JobParametersBuilder()
                                             .addLong("startAt", System.currentTimeMillis())
                                             .toJobParameters();
 
         try {
-            // JobExecution jobExecution = jobLauncher.run(job, jobParameters);
-            jobLauncher.run(job, jobParameters);
+            JobExecution jobExecution = jobLauncher.run(job, jobParameters);
+
+            if(!jobExecution.getStatus().isUnsuccessful()){
+                return new ResponseEntity<>("File exported successfully !!", HttpStatus.ACCEPTED);
+            }
         } catch (JobExecutionAlreadyRunningException | JobRestartException | JobInstanceAlreadyCompleteException
                 | JobParametersInvalidException e) {
             e.printStackTrace();
         }
+
+        return new ResponseEntity<>("File export unsuccessful !!", HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

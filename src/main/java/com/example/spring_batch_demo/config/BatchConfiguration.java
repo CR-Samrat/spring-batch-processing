@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -102,12 +101,10 @@ public class BatchConfiguration {
     @Bean
     protected Step slaveStep(){
         return new StepBuilder("slaveStep", jobRepository)
-                    // .<Student, Student>chunk(500, transactionManager)
                     .<Student, Student>chunk(10, transactionManager)
                     .reader(reader())
                     .processor(processor())
                     .writer(writer())
-                    .taskExecutor(taskExecutor())
                     .build();
     }
 
@@ -124,30 +121,29 @@ public class BatchConfiguration {
     @Bean
     protected Job runJob(){
         return new JobBuilder("myJob", jobRepository)
-                    // .flow(masterStep())
-                    .flow(slaveStep())
+                    .flow(masterStep())
                     .end()
                     .build();
     }
 
     // Execute the whole task using Threads
-    // @Bean
-    // protected TaskExecutor taskExecutor(){
-    //     ThreadPoolTaskExecutor taskHandler = new ThreadPoolTaskExecutor(); //to execute tasks in Thread manner
-    //     taskHandler.setCorePoolSize(4);  // Maximum number of Thread that keep alive at a time
-    //     taskHandler.setMaxPoolSize(4);   // Maximum number of Thread that can be generated
-    //     taskHandler.setQueueCapacity(4); // If Maximum number of Thread reached then extra will moved to Queue
-    //     taskHandler.afterPropertiesSet();
-
-    //     return taskHandler;
-    // }
-
-    // Execute the whole task in async manner (Optional)
     @Bean
     protected TaskExecutor taskExecutor(){
-        SimpleAsyncTaskExecutor asyncExecutor = new SimpleAsyncTaskExecutor();
-        asyncExecutor.setConcurrencyLimit(10);
+        ThreadPoolTaskExecutor taskHandler = new ThreadPoolTaskExecutor(); //to execute tasks in Thread manner
+        taskHandler.setCorePoolSize(4);  // Maximum number of Thread that keep alive at a time
+        taskHandler.setMaxPoolSize(4);   // Maximum number of Thread that can be generated
+        taskHandler.setQueueCapacity(4); // If Maximum number of Thread reached then extra will moved to Queue
+        taskHandler.afterPropertiesSet();
 
-        return asyncExecutor;
+        return taskHandler;
     }
+
+    // Execute the whole task in async manner (Optional)
+    // @Bean
+    // protected TaskExecutor taskExecutor(){
+    //     SimpleAsyncTaskExecutor asyncExecutor = new SimpleAsyncTaskExecutor();
+    //     asyncExecutor.setConcurrencyLimit(10);
+
+    //     return asyncExecutor;
+    // }
 }
